@@ -5,9 +5,7 @@
 
 ## 1. Contexto
 
-Em sistemas distribuídos, é comum usar **tokens** para identificar e autenticar usuários sem precisar consultar o banco de dados a cada requisição. Neste exemplo, usamos um formato minimalista e didático — sem hash, sem criptografia — para focar na **lógica de parse e validação**.
-
-> ⚠️ **Importante:** Em produção, tokens devem conter hash (JWT, por exemplo). Este exemplo é exclusivamente didático.
+Em sistemas distribuídos, é comum usar **tokens** para identificar e autenticar usuários sem precisar consultar o banco de dados a cada requisição. Neste exemplo, usamos um formato minimalista e didático
 
 ---
 
