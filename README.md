@@ -1,27 +1,35 @@
 # Autenticação por Token Simples em Java
-### Proposta
+### Mini Aula — Sistemas Distribuídos
 
 ---
 
 ## 1. Contexto
 
-Em sistemas distribuídos, é comum usar **tokens** para identificar e autenticar usuários sem precisar consultar o banco de dados a cada requisição. Neste exemplo, usamos um formato minimalista e facil de indentificar quem é o usuário e o que ele pode fazer
+Em sistemas distribuídos, é comum usar **tokens** para identificar e autenticar usuários sem precisar consultar o banco de dados a cada requisição. Neste exemplo, usamos um formato minimalista e didático — sem hash, sem criptografia — para focar na **lógica de parse e validação**.
+
+> ⚠️ **Importante:** Em produção, tokens devem conter hash (JWT, por exemplo). Este exemplo é exclusivamente didático.
 
 ---
 
 ## 2. Formato do Token
 
-O token segue uma estrutura simples com **duas partes separadas por `_`**:
+O sistema possui dois tipos de token com formatos distintos:
+
+### Administrador
+
+O administrador é **único** no sistema. Seu token é fixo, sem separador, sem nome:
 
 ```
-[ROLE]_[NOME_ÚNICO]
+adm
 ```
 
-| Role | Prefixo | Exemplo |
-|------|---------|---------|
-| Usuário comum | `usr` | `usr_joaosilva` |
-| Administrador | `adm` | `adm_mariaoliveira` |
-| Inválido | qualquer outro | `mod_carlos` ❌ |
+### Usuário comum
+
+Usuários seguem o padrão `ROLE_NOME`:
+
+```
+usr_[NOME_ÚNICO]
+```
 
 ### Regras do nome de usuário:
 
@@ -33,11 +41,11 @@ O token segue uma estrutura simples com **duas partes separadas por `_`**:
 
 | Token | Resultado |
 |-------|-----------|
-| `usr_joaosilva` | ✅ Válido — usuário |
-| `adm_mariaoliveira` | ✅ Válido — administrador |
+| `adm` | ✅ Administrador |
+| `usr_joaosilva` | ✅ Usuário comum |
+| `adm_qualquercoisa` | ❌ Admin não segue o padrão `ROLE_NOME` |
 | `usr_jo` | ❌ Nome muito curto (menos de 5 caracteres) |
-| `adm_nomemuitolongoultrapassandolimite` | ❌ Nome muito longo (mais de 20 caracteres) |
-| `usr_nome_com_underline` | ❌ Underscore no nome gera 3+ partes no split |
+| `usr_nomemuitolongoultrapassando` | ❌ Nome muito longo (mais de 20 caracteres) |
 | `mod_carlos` | ❌ Role desconhecida |
 
 ---
@@ -55,9 +63,24 @@ if (token == null || token.isEmpty()) {
 
 ---
 
-### Passo 2 — Dividir o token com `split("_")`
+### Passo 2 — Verificar se é o token de administrador
 
-Como o nome **não possui `_`**, usamos o split sem limite de partes. Isso nos permite usar o número de partes como validação: se vier mais ou menos que 2, o formato está errado.
+O token `adm` é checado **antes do split**, pois ele não segue o padrão `ROLE_NOME` — ele é o token inteiro.
+
+```java
+if (token.equals("adm")) {
+    System.out.println("Role: ADMINISTRADOR");
+    return;
+}
+```
+
+> 💡 O `return` garante que o código abaixo não execute. Se chegou até o próximo passo, só pode ser usuário comum ou inválido.
+
+---
+
+### Passo 3 — Dividir o token com `split("_")`
+
+Como o nome não possui `_`, o resultado deve ter **exatamente 2 partes**. Qualquer outro número indica formato errado.
 
 ```java
 String[] partes = token.split("_");
@@ -71,27 +94,27 @@ String[] partes = token.split("_");
 
 ---
 
-### Passo 3 — Exigir exatamente 2 partes
+### Passo 4 — Exigir exatamente 2 partes
 
 ```java
 if (partes.length != 2) {
-    System.out.println("INVÁLIDO: formato incorreto (esperado ROLE_NOME)");
+    System.out.println("INVÁLIDO: formato incorreto (esperado usr_NOME)");
     return;
 }
 ```
 
 ---
 
-### Passo 4 — Extrair role e nome
+### Passo 5 — Extrair role e nome
 
 ```java
-String role        = partes[0]; // "usr" ou "adm"
-String nomeUsuario = partes[1]; // "joaosilva", "mariaoliveira", etc.
+String role        = partes[0]; // "usr"
+String nomeUsuario = partes[1]; // "joaosilva"
 ```
 
 ---
 
-### Passo 5 — Validar o nome com regex e tamanho
+### Passo 6 — Validar o nome com regex
 
 A regex `[a-zA-Z0-9]{5,20}` valida tudo de uma vez:
 - `[a-zA-Z0-9]` — apenas letras e números
@@ -106,15 +129,11 @@ if (!nomeUsuario.matches("[a-zA-Z0-9]{5,20}")) {
 
 ---
 
-### Passo 6 — Verificar a role
+### Passo 7 — Verificar a role
 
 ```java
 if (role.equals("usr")) {
     System.out.println("Role: USUÁRIO | Nome: " + nomeUsuario);
-
-} else if (role.equals("adm")) {
-    System.out.println("Role: ADMINISTRADOR | Nome: " + nomeUsuario);
-
 } else {
     System.out.println("INVÁLIDO: role desconhecida -> " + role);
 }
@@ -129,8 +148,8 @@ if (role.equals("usr")) {
 ```java
 public class TokenParser {
 
-    private static final String ROLE_USER  = "usr";
-    private static final String ROLE_ADMIN = "adm";
+    private static final String TOKEN_ADMIN = "adm";
+    private static final String ROLE_USER   = "usr";
 
     public static void parseToken(String token) {
         // Passo 1: proteção contra entrada vazia
@@ -139,34 +158,35 @@ public class TokenParser {
             return;
         }
 
-        // Passo 2: dividir pelo separador _
-        String[] partes = token.split("_");
-
-        // Passo 3: exigir exatamente 2 partes
-        if (partes.length != 2) {
-            System.out.println("  INVÁLIDO: formato incorreto (esperado ROLE_NOME)");
+        // Passo 2: admin é um token fixo — verificar antes do split
+        if (token.equals(TOKEN_ADMIN)) {
+            System.out.println("  Role: ADMINISTRADOR");
             return;
         }
 
-        // Passo 4: extrair as partes
+        // Passo 3: dividir pelo separador _
+        String[] partes = token.split("_");
+
+        // Passo 4: exigir exatamente 2 partes
+        if (partes.length != 2) {
+            System.out.println("  INVÁLIDO: formato incorreto (esperado usr_NOME)");
+            return;
+        }
+
+        // Passo 5: extrair as partes
         String role        = partes[0];
         String nomeUsuario = partes[1];
 
-        // Passo 5: validar nome — alfanumérico, entre 5 e 20 caracteres
+        // Passo 6: validar nome — alfanumérico, entre 5 e 20 caracteres
         if (!nomeUsuario.matches("[a-zA-Z0-9]{5,20}")) {
             System.out.println("  INVÁLIDO: nome deve ter entre 5 e 20 caracteres alfanuméricos");
             return;
         }
 
-        // Passo 6: verificar role
+        // Passo 7: verificar role
         if (role.equals(ROLE_USER)) {
             System.out.println("  Role: USUÁRIO (usr)");
             System.out.println("  Nome: " + nomeUsuario);
-
-        } else if (role.equals(ROLE_ADMIN)) {
-            System.out.println("  Role: ADMINISTRADOR (adm)");
-            System.out.println("  Nome: " + nomeUsuario);
-
         } else {
             System.out.println("  INVÁLIDO: role desconhecida \"" + role + "\"");
         }
@@ -178,6 +198,14 @@ public class TokenParser {
 
 ## 5. Exemplos de Validação
 
+**✅ Passa — administrador**
+```
+Token:  "adm"
+Equals: "adm" == "adm" ✅
+
+Resultado: Role: ADMINISTRADOR
+```
+
 **✅ Passa — usuário válido**
 ```
 Token:  "usr_joaosilva"
@@ -188,30 +216,21 @@ Role:   "usr" ✅
 Resultado: Role: USUÁRIO | Nome: joaosilva
 ```
 
-**✅ Passa — administrador válido**
+**❌ Não passa — role desconhecida**
 ```
-Token:  "adm_mariaoliveira"
-Split:  ["adm", "mariaoliveira"]  →  2 partes ✅
-Nome:   "mariaoliveira"  →  13 caracteres, apenas letras ✅
-Role:   "adm" ✅
+Token:  "mod_carlos"
+Split:  ["mod", "carlos"]  →  2 partes ✅
+Nome:   "carlos"  →  6 caracteres, apenas letras ✅
+Role:   "mod" ❌
 
-Resultado: Role: ADMINISTRADOR | Nome: mariaoliveira
-```
-
-**❌ Não passa — nome muito curto**
-```
-Token:  "usr_jo"
-Split:  ["usr", "jo"]  →  2 partes ✅
-Nome:   "jo"  →  2 caracteres, abaixo do mínimo de 5 ❌
-
-Resultado: INVÁLIDO: nome deve ter entre 5 e 20 caracteres alfanuméricos
+Resultado: INVÁLIDO: role desconhecida "mod"
 ```
 
 ---
 
 ## 6. Salvando no Banco de Dados
 
-Após o parse, você terá `role` e `nomeUsuario` separados. Guarde-os em **colunas distintas** — nunca o token bruto inteiro.
+Após o parse, guarde `role` e `nomeUsuario` em **colunas distintas**. Para o administrador, o nome pode ser salvo como um valor fixo ou deixado nulo, dependendo da modelagem do projeto.
 
 ```java
 public void salvarUsuario(String role, String nomeUsuario) {
@@ -231,8 +250,8 @@ public void salvarUsuario(String role, String nomeUsuario) {
 ```sql
 CREATE TABLE usuarios (
     id    INT PRIMARY KEY AUTO_INCREMENT,
-    nome  VARCHAR(20)  NOT NULL,  -- máximo de 20 respeitando a regra do token
-    role  VARCHAR(3)   NOT NULL   -- "usr" ou "adm"
+    nome  VARCHAR(20),          -- nulo para o administrador
+    role  VARCHAR(3)  NOT NULL  -- "usr" ou "adm"
 );
 ```
 
@@ -248,10 +267,14 @@ Token recebido
       |
       NÃO
       v
+  token == "adm"? ──── SIM ──► ADMINISTRADOR ✅
+      |
+      NÃO
+      v
   split("_")
       |
       v
-  Tem 2 partes? ──── NÃO ──► INVÁLIDO  (sem _ ou _ no nome)
+  Tem 2 partes? ──── NÃO ──► INVÁLIDO
       |
       SIM
       v
@@ -261,10 +284,9 @@ Token recebido
       SIM
       v
   role == "usr"? ──► USUÁRIO ✅
-  role == "adm"? ──► ADMIN   ✅
   outro?         ──► INVÁLIDO ❌
 ```
 
 ---
 
-*Documento produzido por solicitação do Professor na aula de Quarta-Feira 22/04 Sistemas Distribuídos.*
+*Mini aula produzida para a disciplina de Sistemas Distribuídos.*
